@@ -1,0 +1,17 @@
+/.bundle/
+/.yardoc
+/Gemfile.lock
+/_yardoc/
+/coverage/
+/doc/
+/pkg/
+/spec/reports/
+/tmp/
+doc/
+*.swp
+*~
+.project
+.DS_*
+.idea/
+.secret
+ciscosnmp-*.gem

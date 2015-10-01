@@ -1,0 +1,48 @@
+#!/usr/bin/env ruby
+require 'ciscosnmp'
+require 'ipaddress'
+
+
+options = {}
+option_parser = OptionParser.new do |opts|
+  executable_name = File.basename($PROGRAM_NAME)
+  opts.banner = "\nUsage: #{executable_name} [options] device"
+  opts.on('-c COMMUNITY','SNMP write community - default: public') do |community|
+    options[:community] = community
+  end
+  opts.on('-d DIRECTORY', 'Backup directory - default: ~/Configs') do |directory|
+    options[:config_directory] = directory
+  end
+  opts.on('-t TFTP', "TFTP Server directory - default: #{Ciscosnmp::Helpers.get_default_tftp_dir}") do |tftp|
+    options[:tftp_server_directory] = tftp
+  end
+end
+
+begin
+  option_parser.parse!
+rescue => e
+  puts e.message.capitalize
+  puts option_parser.help
+  exit 1
+end
+
+if ARGV.empty?
+  puts "Error: you must supply a device to backup"
+  puts option_parser.help
+  exit 1
+else
+  while ARGV.length != 0
+    options[:address] = ARGV.shift
+    if IPAddress.valid?(options[:address])
+      device = Ciscosnmp::Base.new(options)
+      response = device.backup
+      if response.failure?
+        puts "Error: #{response.message}"
+      else
+        puts "OK: #{response.message}"
+      end
+    else
+      puts "Error: #{options[:address]} is not a valid IP"
+    end
+  end
+end

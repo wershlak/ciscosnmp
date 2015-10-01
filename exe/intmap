@@ -1,0 +1,100 @@
+#!/usr/bin/env ruby
+# Simple script to output a table of ports/descriptions
+# and status along with CDP neighbors
+# pretty simple but useful for quick lookups on LAN switches
+#
+
+require 'ciscosnmp'
+require 'ipaddress'
+using Ciscosnmp::Refinements::Hexhelpers
+
+
+options = {}
+option_parser = OptionParser.new do |opts|
+  executable_name = File.basename($PROGRAM_NAME)
+  opts.banner = "Usage: #{executable_name} [options] device\n\t Prints interface and neighbor info for a cisco switch\n\n"
+  opts.on('-c COMMUNITY','SNMP read community') do |community|
+    options[:community] = community
+  end
+  opts.on("-w", "Wide format output") do |w|
+    options[:wide] = w
+  end
+end
+
+begin
+  option_parser.parse!
+rescue => e
+  puts e.message.capitalize
+  puts option_parser.help
+  exit 1
+end
+
+if options[:wide]
+  max_length = 60
+else
+  max_length = 20
+end
+
+if ARGV.empty?
+  puts "Error: you must supply a device to map"
+  puts option_parser.help
+  exit 1
+else
+  while ARGV.length != 0
+    options[:address] = ARGV.shift
+    if IPAddress.valid?(options[:address])
+      device = Ciscosnmp::Base.new(options)
+      unless device.online?
+        print "\tNo response from ", device.address, "\n\tVerify network connections and SNMP string: \"", device.community, "\"\n\n"
+        next
+      end
+      response = device.sys_name
+      if response.success?
+        puts "Mapping #{device.address} - #{response.message}"
+      end
+      response = device.model
+      if response.success?
+        puts "Model: #{response.message}"
+      end
+      response = device.ios
+      if response.success?
+        puts "IOS Version: #{response.message}"
+      end
+      printf "%-10s %-#{max_length + 1}s %-6s %-16s %-22s\n", "Int", "Description", "Status", "Neighbor IP", "Port"
+      response = device.snmp_walk('ifIndex')
+      next if response.failure?
+
+      response.message.each do |index|
+        neighbor = nil
+        neighbor_int = nil
+        name = nil
+        desc = nil
+
+        result = device.snmp_get("ifName.#{index}")
+        name = result.message if result.success?
+        next if (/StackSub/.match name) || (/StackPort/.match name)
+        result = device.snmp_get("ifAlias.#{index}")
+        desc = result.message[0, max_length] if result.success?
+        result = device.snmp_get("ifOperStatus.#{index}")
+        if result.success? && result.message == '1'
+          status = 'UP'
+          result = device.snmp_walk("1.3.6.1.4.1.9.9.23.1.2.1.1.4.#{index}")
+          if result.success?
+            neighbor = result.message.pop
+          end
+          if neighbor
+            neighbor = neighbor.to_s.to_hex.h2dd
+            result = device.snmp_walk("1.3.6.1.4.1.9.9.23.1.2.1.1.7.#{index}")
+            if result.success?
+              neighbor_int = result.message.pop
+            end
+          end
+        else
+          status = 'DOWN'
+        end
+        printf "%-10s %-#{max_length + 1}s %-6s %-16s %-22s\n", name, desc, status, neighbor, neighbor_int
+      end
+      puts
+    end
+  end
+end

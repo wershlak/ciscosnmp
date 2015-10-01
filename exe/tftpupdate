@@ -1,0 +1,54 @@
+#!/usr/bin/env ruby
+require 'ciscosnmp'
+require 'ipaddress'
+
+
+options = {}
+option_parser = OptionParser.new do |opts|
+  executable_name = File.basename($PROGRAM_NAME)
+  opts.banner = "\nUsage: #{executable_name} [options] device"
+  opts.on('-c COMMUNITY','SNMP write community - default: public') do |community|
+    options[:community] = community
+  end
+  opts.on('-f FILE', 'Overide the default "update.txt" file') do |file|
+    options[:file] = file
+  end
+  opts.on('-t TFTP', "TFTP Server directory - default: #{Ciscosnmp::Helpers.get_default_tftp_dir}") do |tftp|
+    options[:tftp_server_directory] = tftp
+  end
+end
+
+begin
+  option_parser.parse!
+rescue => e
+  puts e.message.capitalize
+  puts option_parser.help
+  exit 1
+end
+
+if ARGV.empty?
+  puts "Error: you must supply a device to update"
+  puts option_parser.help
+  exit 1
+else
+  while ARGV.length != 0
+    options[:address] = ARGV.shift
+    if IPAddress.valid?(options[:address])
+      device = Ciscosnmp::Base.new(options)
+      response = device.update
+      if response.failure?
+        puts "Error: #{response.message}"
+      else
+        puts "OK: #{response.message}"
+        response = device.save
+        if response.failure?
+          puts "Error: #{response.message}"
+        else
+          puts "OK: #{response.message}"
+        end
+      end
+    else
+      puts "Error: #{options[:address]} is not a valid IP"
+    end
+  end
+end
